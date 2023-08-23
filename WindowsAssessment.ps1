@@ -1,7 +1,7 @@
 param ([Switch]$EnableSensitiveInfoSearch = $false)
 # add the "EnableSensitiveInfoSearch" flag to search for sensitive data
 
-$Version = "1.37" # used for logging purposes
+$Version = "1.38" # used for logging purposes
 ###########################################################
 <# TODO: 
 - Bug fixes:
@@ -16,8 +16,7 @@ $Version = "1.37" # used for logging purposes
 - Add check into NetSessionEnum to see whether running on a DC
 - Determine if computer is protected against IPv6 based DNS spoofing (mitm6) - IPv6 disabled (Get-NetAdapterBinding -ComponentID ms_tcpip6) or inbound ICMPv6 / outbound DHCPv6 blocked by FW - https://vuls.cert.org/confluence/display/Wiki/2022/02/24/Kerberos+relaying+with+krbrelayx+and+mitm6
 - Add AMSI test (find something that is not EICAR based) - https://www.blackhillsinfosec.com/is-this-thing-on
-- Move lists (like processes or services) to CSV format instead of TXT - in progress
-- Consider separating the Domain-Hardening output files - checks aren't related
+- Update PSv2 checks - speak with Nir/Liran, use this: https://robwillis.info/2020/01/disabling-powershell-v2-with-group-policy/, https://github.com/robwillisinfo/Disable-PSv2/blob/master/Disable-PSv2.ps1
 - Ensure that the internet connectivity check (curl over HTTP/S) proxy aware
 - Determine more stuff that are found only in the Security-Policy/GPResult files:
 -- Determine LDAP Signing and Channel Binding (https://4sysops.com/archives/secure-domain-controllers-with-ldap-channel-binding-and-ldap-signing)
@@ -32,7 +31,6 @@ $Version = "1.37" # used for logging purposes
 - Consider removing the recommendation of running as local admin; ensure that most functionality is preserved without it
 - When the script is running by an admin but without UAC, pop an UAC confirmation (https://gallery.technet.microsoft.com/scriptcenter/1b5df952-9e10-470f-ad7c-dc2bdc2ac946)
 - Check Macro and DDE (OLE) settings (in progress)
-- Check if ability to enable mobile hotspot is blocked (GPO Prohibit use of Internet Connection Sharing on your DNS domain network - Done, reg NC_ShowSharedAccessUI)
 - Look for additional checks from windows_hardening.cmd script / Seatbelt
 - Enhance internet connectivity checks (use proxy configuration) - need to check proxy settings on multiple types of deployments 
 - Check for Lock with screen saver after time-out? (\Control Panel\Personalization\) and "Interactive logon: Machine inactivity limit"? Relevant mostly for desktops
@@ -159,7 +157,6 @@ function addToCSV {
 
 function addControlsToCSV {
     addToCSV -category "Machine Hardening - Patching" -checkID  "control_OSupdate" -checkName "OS Update" -finding "Ensure OS is up to date" -risk $csvR4 -relatedFile "hotfixes" -comment "shows recent updates" -status $csvUn
-    addToCSV -category "Machine Hardening - Operation system" -checkID  "control_NetSession" -checkName "Net Session permissions" -finding "Ensure Net Session permissions are hardened" -risk $csvR3 -relatedFile "NetSession" -status $csvUn
     addToCSV -category "Machine Hardening - Audit" -checkID  "control_AuditPol" -checkName "Audit policy" -finding "Ensure audit policy is sufficient (need admin permission to run)" -risk $csvR3 -relatedFile "Audit-Policy" -status $csvUn
     addToCSV -category "Machine Hardening - Users" -checkID  "control_LocalUsers" -checkName "Local users" -finding "Ensure local users are all disabled or have their password rotated" -risk $csvR4 -relatedFile "Local-Users, Security-Policy.inf" -comment "Local users and cannot connect over the network: Deny access to this computer from the network " -status $csvUn
     addToCSV -category "Machine Hardening - Authentication" -checkID  "control_CredDel" -checkName "Credential delegation" -finding "Ensure Credential delegation is not configured or disabled (need admin permission to run)" -risk $csvR3 -relatedFile "GPResult" -comment "Administrative Templates > System > Credentials Delegation > Allow delegating default credentials + with NTLM" -status $csvUn
@@ -170,13 +167,12 @@ function addControlsToCSV {
     addToCSV -category "Machine Hardening - Operation system" -checkID  "control_SvcAcc" -checkName "Service Accounts" -finding "Ensure service Accounts cannot login interactively (need admin permission to run)" -risk $csvR4 -relatedFile "Security-Policy inf" -comment "Deny log on locally/remote" -status $csvUn
     addToCSV -category "Machine Hardening - Authentication" -checkID  "control_LocalAndDomainPassPol" -checkName "Local and domain password policies" -finding "Ensure local and domain password policies are sufficient " -risk $csvR3 -relatedFile "AccountPolicy" -status $csvUn
     addToCSV -category "Machine Hardening - Operation system" -checkID  "control_SharePerm" -checkName "Overly permissive shares" -finding "No overly permissive shares exists " -risk $csvR3 -relatedFile "Shares" -status $csvUn
-    addToCSV -category "Machine Hardening - Authentication" -checkID  "control_ClearPass" -checkName "No clear-text passwords" -finding "No clear-text passwords are stored in files (if the EnableSensitiveInfoSearch was set)" -risk $csvR5 -relatedFile "Sensitive-Info" -status $csvUn
     addToCSV -category "Machine Hardening - Users" -checkID  "control_NumOfUsersAndGroups" -checkName "Reasonable number or users/groups" -finding "Reasonable number or users/groups have local admin permissions " -risk $csvR3 -relatedFile "Local-Users" -status $csvUn
     addToCSV -category "Machine Hardening - Users" -checkID  "control_UserRights" -checkName "User Rights Assignment" -finding "User Rights Assignment privileges don't allow privilege escalation by non-admins (need admin permission to run)" -risk $csvR4 -relatedFile "Security-Policy.inf" -comment "User Rights Assignment" -status $csvUn
     addToCSV -category "Machine Hardening - Operation system" -checkID  "control_SvcPer" -checkName "Service with overly permissive privileges" -finding "Ensure services are not running with overly permissive privileges" -risk $csvR3 -relatedFile "Services" -status $csvUn
     addToCSV -category "Machine Hardening - Operation system" -checkID  "control_MalProcSrvSoft" -checkName "Irrelevant/malicious processes/services/software" -finding "Ensure no irrelevant/malicious processes/services/software exists" -risk $csvR4 -relatedFile "Services, Process-list, Software, Netstat" -status $csvUn
     addToCSV -category "Machine Hardening - Audit" -checkID  "control_EventLog" -checkName "Event Log" -finding "Ensure logs are exported to SIEM" -risk $csvR2 -relatedFile "Audit-Policy" -status $csvUn
-    addToCSV -category "Machine Hardening - Network Access" -checkID  "control_HostFW" -checkName "Host firewall" -finding "Host firewall rules are configured to block/filter inbound (Host Isolation)" -risk $csvR4 -relatedFile "indows-Firewall, Windows-Firewall-Rules" -status $csvUn
+    addToCSV -category "Machine Hardening - Network Access" -checkID  "control_HostFW" -checkName "Host firewall" -finding "Host firewall rules are configured to block/filter inbound (Host Isolation)" -risk $csvR4 -relatedFile "Windows-Firewall, Windows-Firewall-Rules" -status $csvUn
     addToCSV -category "Machine Hardening - Operation system" -checkID  "control_Macros" -checkName "Macros are restricted" -finding "Ensure office macros are restricted" -risk $csvR4 -relatedFile "GPResult, currently WIP" -status $csvUn
 }
 
@@ -198,7 +194,7 @@ function dataWhoAmI {
         $tmp = Test-ComputerSecureChannel -ErrorAction SilentlyContinue
     }
     else{
-        $tmp = $true
+        $tmp = $true 
     }
     if ((Get-WmiObject -Class Win32_ComputerSystem).PartOfDomain -and (!$tmp))
         {
@@ -489,36 +485,37 @@ function dataInstalledHotfixes {
     
 }
 
-#adding CSV Support until hare (going down)
 # get processes (new powershell version and run-as admin are required for IncludeUserName)
 function dataRunningProcess {
     param (
         $name
     )
     writeToLog -str "running dataRunningProcess function"
-    $outputFile = getNameForFile -name $name -extension ".txt"
+    $outputFile = getNameForFile -name $name -extension ".csv"
     writeToScreen -str "Getting processes..." -ForegroundColor Yellow
-    writeToFile -file $outputFile -path $folderLocation -str  "Output of `"Get-Process`" PowerShell command:`r`n"
+    # writeToFile -file $outputFile -path $folderLocation -str  "Output of `"Get-Process`" PowerShell command:`r`n"
     try {
-        writeToFile -file $outputFile -path $folderLocation -str (Get-Process -IncludeUserName | Format-Table -AutoSize ProcessName, id, company, ProductVersion, username, cpu, WorkingSet | Out-String -Width 180 | Out-String) 
+        Get-Process -IncludeUserName | Select-Object "ProcessName", "id", "company", "ProductVersion", "username", "cpu", "WorkingSet"  | export-csv -path "$folderLocation\$outputFile" -NoTypeInformation -ErrorAction SilentlyContinue
+
     }
     # run without IncludeUserName if the script doesn't have elevated permissions or for old powershell versions
-    catch {
-        writeToFile -file $outputFile -path $folderLocation -str (Get-Process | Format-Table -AutoSize ProcessName, id, company, ProductVersion, cpu, WorkingSet | Out-String -Width 180 | Out-String)
+    catch { 
+        Get-Process | Select-Object "ProcessName", "id", "company", "ProductVersion", "cpu", "WorkingSet"  | export-csv -path "$folderLocation\$outputFile" -NoTypeInformation -ErrorAction SilentlyContinue
     }
         
-}
+} 
 
 # get services
-function dataServices {
+function dataServices {   
     param (
         $name
     )
     writeToLog -str "running dataServices function"
-    $outputFile = getNameForFile -name $name -extension ".txt"
+    $outputFile = getNameForFile -name $name -extension ".csv"
     writeToScreen -str "Getting services..." -ForegroundColor Yellow
-    writeToFile -file $outputFile -path $folderLocation -str "Output of `"Get-WmiObject win32_service`" PowerShell command:`r`n"
-    writeToFile -file $outputFile -path $folderLocation -str (Get-WmiObject win32_service  | Sort-Object displayname | Format-Table -AutoSize DisplayName, Name, State, StartMode, StartName | Out-String -Width 180 | Out-String)
+    #writeToFile -file $outputFile -path $folderLocation -str "Output of `"Get-WmiObject win32_service`" PowerShell command:`r`n"
+    #writeToFile -file $outputFile -path $folderLocation -str (Get-WmiObject win32_service  | Sort-Object displayname | Format-Table -AutoSize DisplayName, Name, State, StartMode, StartName | Out-String -Width 180 | Out-String)
+    Get-WmiObject win32_service  | Sort-Object displayname | Select-Object "DisplayName", "Name", "State", "StartMode", "StartName" | export-csv -path  "$folderLocation\$outputFile" -NoTypeInformation -ErrorAction SilentlyContinue
 }
 
 # get installed software
@@ -527,9 +524,10 @@ function dataInstalledSoftware{
         $name
     )
     writeToLog -str "running dataInstalledSoftware function"
-    $outputFile = getNameForFile -name $name -extension ".txt"
+    $outputFile = getNameForFile -name $name -extension ".csv"
     writeToScreen -str "Getting installed software..." -ForegroundColor Yellow
-    writeToFile -file $outputFile -path $folderLocation -str (Get-ItemProperty HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\* | Select-Object DisplayName, DisplayVersion, Publisher, InstallDate | Sort-Object DisplayName | Out-String -Width 180 | Out-String)
+    #writeToFile -file $outputFile -path $folderLocation -str (Get-ItemProperty HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\* | Select-Object DisplayName, DisplayVersion, Publisher, InstallDate | Sort-Object DisplayName | Out-String -Width 180 | Out-String)
+    Get-ItemProperty HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\* | Select-Object DisplayName, DisplayVersion, Publisher, InstallDate | Sort-Object DisplayName | export-csv -path "$folderLocation\$outputFile" -NoTypeInformation -ErrorAction SilentlyContinue
 }
 
 # get shared folders (Share permissions are missing for older PowerShell versions)
@@ -1337,7 +1335,6 @@ function checkRDPSecurity {
 }
 
 # search for sensitive information (i.e. cleartext passwords) if the flag exists
-# check is not compatible with checks.csv format (Not a boolean result)
 function checkSensitiveInfo {
     param (
         $name
@@ -1357,19 +1354,33 @@ function checkSensitiveInfo {
             # find txt\ini\config\xml\vnc files with the word password in it, and dump the line
             # ignore the files outputted during the assessment...
             $includeFileTypes = @("*.txt","*.ini","*.config","*.xml","*vnc*")
-            writeToFile -file $outputFile -path $folderLocation -str (Get-ChildItem -Path $path -Include $includeFileTypes -Attributes !System -File -Recurse -ErrorAction SilentlyContinue | Where-Object {$_.Name -notlike "*_$hostname.txt"} | Select-String -Pattern password | Out-String)
+            $filesWithPattern = Get-ChildItem -Path $path -Include $includeFileTypes -Attributes !System -File -Recurse -ErrorAction SilentlyContinue | Where-Object {$_.Name -notlike "*_$hostname.txt"} | Select-String -Pattern password | Out-String
+            writeToFile -file $outputFile -path $folderLocation -str ($filesWithPattern)
             # find files with the name pass\cred\config\vnc\p12\pfx and dump the whole file, unless it is too big
             # ignore the files outputted during the assessment...
             $includeFilePatterns = @("*pass*","*cred*","*config","*vnc*","*p12","*pfx")
             $files = Get-ChildItem -Path $path -Include $includeFilePatterns -Attributes !System -File -Recurse -ErrorAction SilentlyContinue | Where-Object {$_.Name -notlike "*_$hostname.txt"}
+            $fileNames = @()
             foreach ($file in $files)
             {
                 writeToFile -file $outputFile -path $folderLocation -str "------------- $file -------------"
                 $fileSize = (Get-Item $file.FullName).Length
                 if ($fileSize -gt 300kb) {writeToFile -file $outputFile -path $folderLocation -str ("The file is too large to copy (" + [math]::Round($filesize/(1mb),2) + " MB).") }
-                else {writeToFile -file $outputFile -path $folderLocation -str (Get-Content $file.FullName)}
+                else {
+                    $fileNames += Get-Content $file.FullName
+                    writeToFile -file $outputFile -path $folderLocation -str (Get-Content $file.FullName)
+                }
+            }
+            if($null -ne $filesWithPattern -and $filesWithPattern -ne ""){
+               addToCSV -relatedFile $outputFile -category "Machine Hardening - Authentication" -checkName "No clear-text passwords" -checkID "machine_clearTextPass" -status $csvOp -finding "Clear text passwords where found in: $fileNames" -risk $csvR5 
+            }
+            else{
+               addToCSV -relatedFile $outputFile -category "Machine Hardening - Authentication" -checkName "No clear-text passwords" -checkID "machine_clearTextPass" -status $csvSt -finding "No clear text passwords where found" -risk $csvR5 
             }
         }
+    }
+    else{
+        addToCSV -relatedFile $outputFile -category "Machine Hardening - Authentication" -checkName "No clear-text passwords" -checkID "machine_clearTextPass" -status $csvUn -finding "Clear text passwords check has not been preformed" -risk $csvR5 
     }
     
 }
@@ -1510,7 +1521,6 @@ function checkAntiVirusStatus {
     }
 }
 
-# partial support for csv export (NetBIOS final check need conversion)
 # check if LLMNR and NETBIOS-NS are enabled
 function checkLLMNRAndNetBIOS {
     param (
@@ -1576,6 +1586,49 @@ function checkLLMNRAndNetBIOS {
         writeToFile -file $outputFile -path $folderLocation -str "If NetbiosOptions is set to 2 for the main interface, NetBIOS Name Service is protected against poisoning attacks even though the NodeType is not set to P-node, and this is not a finding."
         $interfaces = getRegValue -HKLM $true -regPath "\SYSTEM\CurrentControlSet\Services\NetBT\Parameters\Interfaces\Tcpip_*" -regName "NetbiosOptions"
         writeToFile -file $outputFile -path $folderLocation -str ($interfaces | Select-Object PSChildName,NetbiosOptions | Out-String)
+        $defaultFlag = $false
+        $defaultList = ""
+        $enforcedEnabled = $false
+        $enforcedEnabledList = ""
+        foreach ($item in ($interfaces | Select-Object PSChildName,NetbiosOptions)){
+            switch ($item.NetbiosOptions) {
+                0 {
+                    if($NodeType -ne 2){
+                        $defaultFlag = $true
+                        if($defaultList -eq ""){
+                        $defaultList += $item.PSChildName
+                        }
+                        else{
+                            $defaultList += ", " + $item.PSChildName 
+                        }
+                    }
+                }
+                1 {
+                    $enforcedEnabled = $true
+                    if($enforcedEnabledList -eq ""){
+                        $enforcedEnabledList += $item.PSChildName
+                    }
+                    else{
+                        $enforcedEnabledList += ", " + $item.PSChildName
+                    }
+                }
+                2 {
+                    #disabled
+                }
+            }
+        }
+        if($defaultFlag -and $enforcedEnabled){
+            addToCSV -relatedFile $outputFile -category "Domain Hardening - Network" -checkName "NetBIOS interfaces configuration" -checkID "domain_NetBIOSInt" -status $csvOp -finding "Interfaces NetBIOS is using both vulnerable default setting and enforced enable " -comment "Default NetBIOS setting is applied on:$defaultList and NetBIOS is enabled by force on:$enforcedEnabledList" -risk $csvR4
+        }
+        elseif ($defaultFlag) {
+            addToCSV -relatedFile $outputFile -category "Domain Hardening - Network" -checkName "NetBIOS interfaces configuration" -checkID "domain_NetBIOSInt" -status $csvOp -finding "Interfaces NetBIOS is using vulnerable default setting" -comment "Default NetBIOS setting is applied on:$defaultList" -risk $csvR4
+        }
+        elseif ($enforcedEnabled) {
+            addToCSV -relatedFile $outputFile -category "Domain Hardening - Network" -checkName "NetBIOS interfaces configuration" -checkID "domain_NetBIOSInt" -status $csvOp -finding "Interfaces are enforced to enable NetBIOS" -comment "NetBIOS is enabled by force on:$enforcedEnabledList" -risk $csvR4
+        }
+        else{
+            addToCSV -relatedFile $outputFile -category "Domain Hardening - Network" -checkName "NetBIOS interfaces configuration" -checkID "domain_NetBIOSInt" -status $csvSt -finding "Interfaces NetBIOS is configured with secure default or disabled" -risk $csvR4
+        }
     }
     
 }
@@ -1639,12 +1692,17 @@ function checkWDigest {
 }
 
 # check for Net Session enumeration permissions
-# cannot be converted to a check function (will not be showed in the checks csv) - aka function need to be recreated 
 function checkNetSessionEnum {
     param (
         $name
     )
     $outputFile = getNameForFile -name $name -extension ".txt"
+    if($isDomainController){
+        $currentRisk = $csvR5
+    }
+    else{
+        $currentRisk = $csvR3
+    }
     writeToLog -str "running checkNetSessionEnum function"
     writeToScreen -str "Getting NetSession configuration..." -ForegroundColor Yellow
     writeToFile -file $outputFile -path $folderLocation -str "============= NetSession Configuration ============="
@@ -1659,7 +1717,20 @@ function checkNetSessionEnum {
     $SessionRegValue = getRegValue -HKLM $true -regPath "\SYSTEM\CurrentControlSet\Services\LanmanServer\DefaultSecurity" -regName "SrvsvcSessionInfo"
     $SessionRegValue = $SessionRegValue.SrvsvcSessionInfo
     $SecurityDesc = New-Object -TypeName System.Security.AccessControl.CommonSecurityDescriptor -ArgumentList ($true,$false,$SessionRegValue,0)
-    writeToFile -file $outputFile -path $folderLocation -str ($SecurityDesc.DiscretionaryAcl | ForEach-Object {$_ | Add-Member -MemberType ScriptProperty -Name TranslatedSID -Value ({$this.SecurityIdentifier.Translate([System.Security.Principal.NTAccount]).Value}) -PassThru} | Out-String)
+    $SecurityDescList = $SecurityDesc.DiscretionaryAcl | ForEach-Object {$_ | Add-Member -MemberType ScriptProperty -Name TranslatedSID -Value ({$this.SecurityIdentifier.Translate([System.Security.Principal.NTAccount]).Value}) -PassThru}
+    writeToFile -file $outputFile -path $folderLocation -str ($SecurityDescList | Out-String)
+    $flag = $false
+    foreach ($item in $SecurityDescList){
+        if($item.TranslatedSID -like "*Authenticated Users*"){
+            $flag = $true
+        }
+    }
+    if($flag){
+        addToCSV -relatedFile $outputFile -category "Domain Hardening - Enumeration" -checkName "NetSession enumeration permissions" -checkID "domain_NetSessionEnum" -status $csvOp -finding "Net session enumeration permissions are not hardened - Authenticated user can enumerate the SMB sessions on this computer" -comment "This is a major vulnerability mainly on Domain Controllers, enabling valuable reconnaissance, as leveraged by BloodHound." -risk $currentRisk
+    }
+    else{
+        addToCSV -relatedFile $outputFile -category "Domain Hardening - Enumeration" -checkName "NetSession enumeration permissions" -checkID "domain_NetSessionEnum" -status $csvOp -finding "Net session enumeration permissions are hardened - Authenticated user cannot enumerate the SMB sessions on this computer" -risk $currentRisk
+    }
     writeToFile -file $outputFile -path $folderLocation -str "--------- Raw Registry Value Check ---------" 
     writeToFile -file $outputFile -path $folderLocation -str "For comparison, below are the beginning of example values of the SrvsvcSessionInfo registry key, which holds the ACL for NetSessionEnum:"
     writeToFile -file $outputFile -path $folderLocation -str "Default value for Windows 2019 and newer builds of Windows 10 (hardened): 1,0,4,128,160,0,0,0,172"
@@ -2994,10 +3065,8 @@ function checkPrevStorOfPassAndCred {
     }
 }
 
-#CredSSP Checks (in development)
-# https://thegeekpage.com/credssp-encryption-oracle-remediation-error/
+#CredSSP Checks
 # https://admx.help/?Category=Windows_10_2016&Policy=Microsoft.Policies.CredentialsSSP::AllowDefaultCredentials
-# Check the CredSSP registry key - Allow delegating default credentials (general and NTLM)
 function checkCredSSP {
     param (
         $name
